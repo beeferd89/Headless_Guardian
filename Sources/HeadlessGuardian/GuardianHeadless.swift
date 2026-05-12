@@ -13,8 +13,17 @@ import SwiftUI
 
 // Detect launch mode before SwiftUI initializes.
 // If --headless is present in argv, bypass the App struct entirely.
-func detectLaunchMode() -> Bool {
-    CommandLine.arguments.contains("--headless")
+func detectLaunchMode(args: [String] = CommandLine.arguments) -> Bool {
+    args.contains("--headless")
+}
+
+// Extract and validate --port <value> from an argument list.
+// Returns defaultPort if the flag is absent, missing a value, or non-numeric / out of UInt16 range.
+func parsePort(from args: [String], default defaultPort: UInt16 = 8547) -> UInt16 {
+    guard let idx = args.firstIndex(of: "--port"),
+          idx + 1 < args.count,
+          let p = UInt16(args[idx + 1]) else { return defaultPort }
+    return p
 }
 
 // MARK: - Headless Daemon Entry
@@ -24,14 +33,7 @@ func detectLaunchMode() -> Bool {
 func runHeadlessDaemon() {
 
     let useOpacity = CommandLine.arguments.contains("--opacity")
-    let port: UInt16 = {
-        if let idx = CommandLine.arguments.firstIndex(of: "--port"),
-           idx + 1 < CommandLine.arguments.count,
-           let p = UInt16(CommandLine.arguments[idx + 1]) {
-            return p
-        }
-        return 8547
-    }()
+    let port = parsePort(from: CommandLine.arguments)
 
     print("""
     ┌─────────────────────────────────────────────────────┐
@@ -90,10 +92,12 @@ func runHeadlessDaemon() {
 // The LaunchAgent pipes stdout to /tmp/guardian.log.
 // After 30 days of perpetual expansion, logs can grow large.
 // This utility trims the log to the last 10,000 lines on startup.
-func rotateLogsIfNeeded() {
-    let logPath = "/tmp/guardian.log"
-    guard FileManager.default.fileExists(atPath: logPath),
-          let attrs = try? FileManager.default.attributesOfItem(atPath: logPath),
+func rotateLogsIfNeeded(
+    logPath: String = "/tmp/guardian.log",
+    fileManager: FileManager = .default
+) {
+    guard fileManager.fileExists(atPath: logPath),
+          let attrs = try? fileManager.attributesOfItem(atPath: logPath),
           let size = attrs[.size] as? Int,
           size > 50_000_000 else { return }  // rotate if > 50MB
 
